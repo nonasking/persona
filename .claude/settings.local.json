@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(poetry env:*)",
+      "Bash(poetry add:*)",
+      "Bash(poetry run:*)",
+      "Bash(mkdir -p /Users/minsungkang/Desktop/study/persona/chat/services)",
+      "Bash(touch /Users/minsungkang/Desktop/study/persona/chat/services/__init__.py)",
+      "Bash(touch /Users/minsungkang/Desktop/study/persona/chat/services/claude_client.py)",
+      "Bash(touch /Users/minsungkang/Desktop/study/persona/chat/services/prompt_builder.py)",
+      "Bash(touch /Users/minsungkang/Desktop/study/persona/chat/services/learning.py)",
+      "Bash(poetry install:*)",
+      "Bash(poetry lock:*)"
+    ]
+  }
+}
