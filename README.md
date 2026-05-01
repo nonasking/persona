@@ -2,7 +2,7 @@
 
 A self-learning AI chat system that mimics your personality over time.
 
-Every few messages, Persona analyzes how you write and gradually updates a structured personality profile. Claude then uses that profile to respond in your voice.
+Every few messages, Persona analyzes how you write and gradually updates a structured personality profile. A local Ollama model then uses that profile to respond in your voice.
 
 ## How it works
 
@@ -12,12 +12,12 @@ User message
     ▼
 ChatView
     ├─► (every N messages) LearningService
-    │       ├─ extract_trait_observations()  ← Claude analyzes recent messages
+    │       ├─ extract_trait_observations()  ← Ollama analyzes recent messages
     │       └─ integrate()                  ← EMA blend into SelfProfile
     │
     ├─► PromptBuilder.build_system_prompt() ← trait dict → natural language
     │
-    └─► ClaudeClient.get_chat_response()    ← reply in your voice
+    └─► OllamaClient.get_chat_response()    ← reply in your voice
 ```
 
 ### Learning algorithm
@@ -48,7 +48,7 @@ Every learning pass writes an immutable `TraitObservation` row so you can audit 
 
 - Python 3.12+
 - Poetry
-- Anthropic API key
+- A running [Ollama](https://ollama.com) instance with a pulled chat model (e.g. `ollama pull gemma3:4b`)
 
 ## Setup
 
@@ -60,12 +60,16 @@ poetry install
 
 # 2. Configure environment
 cp .env.example .env
-# Open .env and set DJANGO_SECRET_KEY and ANTHROPIC_API_KEY
+# Open .env and set DJANGO_SECRET_KEY (and OLLAMA_BASE_URL / OLLAMA_MODEL if not using defaults)
 
-# 3. Run migrations
+# 3. Make sure Ollama is running and the model is pulled
+ollama serve            # in a separate terminal, if not already running
+ollama pull gemma3:4b   # or whichever model OLLAMA_MODEL points to
+
+# 4. Run migrations
 poetry run python manage.py migrate
 
-# 4. Start the server
+# 5. Start the server
 poetry run python manage.py runserver
 ```
 
@@ -74,8 +78,8 @@ poetry run python manage.py runserver
 | Variable | Default | Description |
 |---|---|---|
 | `DJANGO_SECRET_KEY` | — | **Required.** Django secret key |
-| `ANTHROPIC_API_KEY` | — | **Required.** Anthropic API key |
-| `ANTHROPIC_MODEL` | `claude-sonnet-4-6` | Claude model to use |
+| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama OpenAI-compatible endpoint |
+| `OLLAMA_MODEL` | `gemma3:4b` | Ollama chat model to use |
 | `LEARNING_TRIGGER_INTERVAL` | `5` | Trigger a learning pass every N user messages |
 | `DEBUG` | `True` | Django debug mode |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated allowed hosts |
@@ -175,7 +179,7 @@ persona/
 │   ├── urls.py             # /api/ routes
 │   ├── admin.py            # admin registrations
 │   └── services/
-│       ├── claude_client.py   # Anthropic SDK wrapper + JSON parsing
+│       ├── ollama_client.py   # Ollama (OpenAI-compatible) wrapper + JSON parsing
 │       ├── learning.py        # adaptive EMA learning system
 │       └── prompt_builder.py  # trait dict → system prompt
 ├── .env.example
