@@ -13,15 +13,40 @@ env/
 # Poetry
 poetry.lock
 
+# Packaging / build
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Testing & coverage
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+
+# Type checking / linting caches
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+
 # Django
 *.log
 db.sqlite3
+db.sqlite3-journal
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
 media/
 staticfiles/
 static/
 
 # Environment variables
 .env
+.env.*
+!.env.example
 
 # IDE
 .idea/
@@ -29,5 +54,9 @@ static/
 *.swp
 *.swo
 
+# Local Claude Code settings (per-user)
+.claude/settings.local.json
+
 # macOS
 .DS_Store
+Thumbs.db
