@@ -68,7 +68,7 @@ def run_learning_pass(session_id: int) -> None:
     Steps:
       1. Load profile + compute adaptive α
       2. Collect observation window (2× interval, slightly older messages included)
-      3. Ask Gemini to extract raw observations
+      3. Ask Ollama to extract raw observations
       4. Integrate observations into the profile via EMA / weighted majority
       5. Persist profile + write immutable TraitObservation log entry
     """
@@ -89,7 +89,7 @@ def run_learning_pass(session_id: int) -> None:
     raw_obs = extract_trait_observations([m.content for m in messages])
 
     if not raw_obs:
-        # Gemini returned unparseable output — skip silently rather than corrupt profile
+        # Ollama returned unparseable output — skip silently rather than corrupt profile
         return
 
     delta = _integrate(profile, raw_obs, alpha)
@@ -119,7 +119,7 @@ def _compute_alpha(update_count: int) -> float:
 
     Example with defaults (cap=15):
       pass  0 → α = 0.35
-      pass  7 → α = 0.225
+      pass  7 → α = 0.2333
       pass 15 → α = 0.10
       pass 30 → α = 0.10  (floor)
     """

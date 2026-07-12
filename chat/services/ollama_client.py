@@ -59,7 +59,7 @@ def _prepare_messages(conversation: list[dict], system_prompt: str) -> list[dict
     Trim to MAX_HISTORY_MESSAGES and prepend the system prompt.
 
     OpenAI format: system message first, then user/assistant pairs.
-    Roles are already "user"/"assistant" — no conversion needed unlike Gemini.
+    Roles are already "user"/"assistant" — no conversion needed.
     """
     if len(conversation) > MAX_HISTORY_MESSAGES:
         conversation = conversation[-MAX_HISTORY_MESSAGES:]
@@ -84,7 +84,7 @@ JSON schema (all fields required):
 {{"formality":0.0-1.0,"directness":0.0-1.0,"humor":0.0-1.0,"empathy":0.0-1.0,\
 "verbosity":0.0-1.0,"characteristic_phrases":["up to 5 phrases"],\
 "topics":["up to 5 topics"],"uses_lists":true/false,\
-"asks_questions":true/false,"uses_examples":true/false,"confidence":0.0-1.0}}"""
+"asks_questions":true/false,"uses_examples":true/false}}"""
 
 
 def extract_trait_observations(user_messages: list[str]) -> dict:
