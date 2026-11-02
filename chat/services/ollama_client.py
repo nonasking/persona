@@ -49,7 +49,7 @@ def get_chat_response(conversation: list[dict], system_prompt: str) -> str:
             messages=messages,
             max_tokens=512,
         )
-        return response.choices[0].message.content
+        return response.choices[0].message.content or ""
     except Exception as exc:
         raise RuntimeError(f"Ollama chat request failed: {exc}") from exc
 
@@ -123,22 +123,26 @@ def _parse_json_safely(text: str) -> dict:
     """
     text = text.strip()
 
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    fenced = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.DOTALL).strip()
-    try:
-        return json.loads(fenced)
-    except json.JSONDecodeError:
-        pass
+    # 작은 모델은 [{...}]나 문자열을 돌려주기도 한다. 객체가 아니면 다음 단계로 넘기고,
+    # 끝까지 객체를 못 얻으면 {}를 돌려 학습을 건너뛴다(_integrate가 dict를 가정한다).
+    for candidate in (
+        text,
+        re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.DOTALL).strip(),
+    ):
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
 
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         try:
-            return json.loads(match.group())
+            parsed = json.loads(match.group())
         except json.JSONDecodeError:
-            pass
+            parsed = None
+        if isinstance(parsed, dict):
+            return parsed
 
     return {}

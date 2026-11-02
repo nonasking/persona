@@ -6,18 +6,26 @@ Every few messages, Persona analyzes how you write and gradually updates a struc
 
 ## How it works
 
-```
-User message
-    │
-    ▼
-ChatView
-    ├─► (every N messages) LearningService
-    │       ├─ extract_trait_observations()  ← Ollama analyzes recent messages
-    │       └─ integrate()                  ← EMA blend into SelfProfile
-    │
-    ├─► PromptBuilder.build_system_prompt() ← trait dict → natural language
-    │
-    └─► OllamaClient.get_chat_response()    ← reply in your voice
+```mermaid
+flowchart TD
+    req["POST /api/chat/"] --> view["ChatView<br/>persists the user Message"]
+    view --> trigger{"every Nth user message?<br/>(LEARNING_TRIGGER_INTERVAL)"}
+
+    trigger -->|"yes — runs inline, before the reply"| pass["run_learning_pass()"]
+    trigger -->|no| build
+
+    subgraph learn ["learning pass (chat/services/learning.py)"]
+        pass --> extract["extract_trait_observations()<br/>Ollama reads the last 2×N user messages"]
+        extract --> parse["_parse_json_safely()<br/>3 fallbacks: direct → strip code fences → regex {...}<br/>unparseable ⇒ {} ⇒ skip pass, profile untouched"]
+        parse --> integrate["_integrate()<br/>adaptive EMA, α decays 0.35 → 0.10<br/>numeric: EMA · boolean: EMA + 0.5 threshold<br/>phrases/topics: decay + boost"]
+        integrate --> profile[("SelfProfile<br/>singleton, pk=1")]
+        integrate --> audit[("TraitObservation<br/>immutable audit log<br/>raw obs · applied delta · α used")]
+    end
+
+    profile --> build["build_system_prompt()<br/>traits → short instructions<br/>(only traits that drifted from 0.5)"]
+    build --> chat["get_chat_response()<br/>system prompt + last 10 messages"]
+    chat --> ollama[("Ollama<br/>OpenAI-compatible API")]
+    ollama --> reply["reply in your voice"]
 ```
 
 ### Learning algorithm
@@ -40,9 +48,26 @@ pass 15  →  α = 0.10   (mature profile — stable, resistant to noise)
 pass 20+ →  α = 0.10   (floor — never fully stops adapting)
 ```
 
-A single unusual conversation at pass 20 can move a numeric score by at most `0.10 × 1.0 = 0.10` on a 0–1 scale. A boolean trait requires ~6 consecutive contradicting observations to flip in a mature profile.
+A single unusual conversation at pass 20 can move a numeric score by at most `0.10 × 1.0 = 0.10` on a 0–1 scale. A boolean trait needs **7 consecutive contradicting observations** to flip in a mature profile.
+
+Worked example — a saturated `asks_questions` (score `1.0`, value `true`) at mature α = 0.10, contradicted every pass. Each pass multiplies the score by `(1 − α) = 0.9`:
+
+```
+pass 1 → 0.9000        pass 5 → 0.5905
+pass 2 → 0.8100        pass 6 → 0.5314   (still ≥ 0.5 → still true)
+pass 3 → 0.7290        pass 7 → 0.4783   (< 0.5 → flips to false)
+pass 4 → 0.6561
+```
+
+So one contrarian conversation — or even six — cannot rewrite a settled habit. (Pinned by `test_mature_boolean_needs_seven_consecutive_contradictions` in `chat/tests.py`.)
 
 Every learning pass writes an immutable `TraitObservation` row so you can audit exactly what changed and why.
+
+### Known limitation: learning is synchronous
+
+The learning pass runs **inline in the request path** — when a message trips the trigger interval, `ChatView` calls `run_learning_pass()` and waits for a full extra Ollama round-trip before it even starts generating the reply. Every Nth message is therefore noticeably slower than the rest.
+
+This is a deliberate trade-off for local single-user use: no broker, no worker process, and the freshly-updated profile is guaranteed to inform the very reply that triggered it. For anything multi-user or latency-sensitive, the pass belongs on a task queue (Celery, RQ, or `django-q`) instead.
 
 ## Requirements
 
@@ -81,7 +106,7 @@ poetry run python manage.py runserver
 | `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama OpenAI-compatible endpoint |
 | `OLLAMA_MODEL` | `gemma3:4b` | Ollama chat model to use |
 | `LEARNING_TRIGGER_INTERVAL` | `5` | Trigger a learning pass every N user messages |
-| `DEBUG` | `True` | Django debug mode |
+| `DEBUG` | `False` | Django debug mode (set `True` in `.env` for local development) |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated allowed hosts |
 
 ## API
@@ -178,6 +203,7 @@ persona/
 │   ├── serializers.py      # DRF serializers
 │   ├── urls.py             # /api/ routes
 │   ├── admin.py            # admin registrations
+│   ├── tests.py            # 31 tests — α schedule, EMA, decay, JSON parsing, API endpoints
 │   └── services/
 │       ├── ollama_client.py   # Ollama (OpenAI-compatible) wrapper + JSON parsing
 │       ├── learning.py        # adaptive EMA learning system
@@ -186,6 +212,14 @@ persona/
 ├── manage.py
 └── pyproject.toml
 ```
+
+## Testing
+
+```bash
+poetry run python manage.py test
+```
+
+31 tests, no Ollama required — every model call is mocked. They pin the parts of the learning system that are easy to break silently: the α decay schedule, EMA blending and clamping, the 7-contradiction boolean flip, phrase/topic decay and pruning, JSON parsing with its three fallbacks (non-object JSON never reaches the learner), learned phrases being sanitized before they enter the system prompt, and the API endpoints (a model failure returns `503` and leaves no orphan user message).
 
 ## Admin
 

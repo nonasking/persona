@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -43,33 +44,43 @@ class ChatView(APIView):
         else:
             session = ChatSession.objects.create()
 
-        # Persist user message
-        Message.objects.create(
-            session=session,
-            role=Message.ROLE_USER,
-            content=data["message"],
-        )
+        # 사용자 메시지·학습·답변을 한 트랜잭션으로 묶는다. Ollama가 실패하면 전부 롤백해서
+        # 답 없는 사용자 메시지가 남지 않게 한다(재시도하면 user 메시지가 연속으로 쌓이고
+        # 학습 주기 카운트도 어긋났다).
+        try:
+            with transaction.atomic():
+                # Persist user message
+                Message.objects.create(
+                    session=session,
+                    role=Message.ROLE_USER,
+                    content=data["message"],
+                )
 
-        # Trigger learning before responding (profile informs the reply)
-        if should_trigger_learning(session.id):
-            run_learning_pass(session.id)
+                # Trigger learning before responding (profile informs the reply)
+                if should_trigger_learning(session.id):
+                    run_learning_pass(session.id)
 
-        # Build conversation history (full session, chronological)
-        history = list(
-            Message.objects.filter(session=session).order_by("created_at")
-        )
-        conversation = [{"role": m.role, "content": m.content} for m in history]
+                # Build conversation history (full session, chronological)
+                history = list(
+                    Message.objects.filter(session=session).order_by("created_at")
+                )
+                conversation = [{"role": m.role, "content": m.content} for m in history]
 
-        # Generate reply
-        profile = SelfProfile.get_or_create_default()
-        reply = get_chat_response(conversation, build_system_prompt(profile))
+                # Generate reply
+                profile = SelfProfile.get_or_create_default()
+                reply = get_chat_response(conversation, build_system_prompt(profile))
 
-        # Persist assistant reply
-        Message.objects.create(
-            session=session,
-            role=Message.ROLE_ASSISTANT,
-            content=reply,
-        )
+                # Persist assistant reply
+                Message.objects.create(
+                    session=session,
+                    role=Message.ROLE_ASSISTANT,
+                    content=reply,
+                )
+        except RuntimeError as exc:
+            return Response(
+                {"error": f"Model unavailable: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         return Response(
             ChatResponseSerializer({"session_id": session.id, "reply": reply}).data
