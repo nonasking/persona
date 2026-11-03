@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # 테스트 전용 값. 모든 Ollama 호출은 테스트에서 mock 처리된다.
+      DJANGO_SECRET_KEY: ci-test-secret-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        # pyproject.toml의 dependencies와 같은 범위 (lock 파일 없이 설치)
+        run: pip install "django>=6.0.4,<7.0.0" "djangorestframework>=3.17.1,<4.0.0" "python-dotenv>=1.2.2,<2.0.0" "openai>=1.0.0"
+      - name: Check
+        run: python manage.py check
+      - name: Test
+        run: python manage.py test chat -v 2
