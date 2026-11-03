@@ -8,6 +8,21 @@ signal for the model and waste input tokens on every chat request.
 from chat.models import SelfProfile
 
 
+PHRASE_MAX_CHARS = 40
+
+
+def _clean_phrase(value) -> str:
+    """학습된 문구는 LLM이 뽑은 값이라 그대로 시스템 프롬프트에 넣지 않는다.
+
+    줄바꿈·따옴표를 걷어 내고 길이를 제한해, 문구 안에 지시문이 섞여 이후 모든
+    세션의 시스템 프롬프트를 바꾸는 일을 막는다.
+    """
+    if not isinstance(value, str):
+        return ""
+    text = " ".join(value.replace('"', " ").replace("'", " ").split())
+    return text[:PHRASE_MAX_CHARS]
+
+
 def build_system_prompt(profile: SelfProfile) -> str:
     """
     Build the persona system prompt from structured traits.
@@ -51,7 +66,11 @@ def build_system_prompt(profile: SelfProfile) -> str:
     elif verbosity > 0.70:
         parts.append("Elaborate with context.")
 
-    phrases = [p["phrase"] for p in (traits.get("characteristic_phrases") or [])[:5]]
+    phrases = [
+        cleaned
+        for p in (traits.get("characteristic_phrases") or [])[:5]
+        if (cleaned := _clean_phrase(p.get("phrase")))
+    ]
     if phrases:
         quoted = ", ".join(f'"{p}"' for p in phrases)
         parts.append(f"Use phrases: {quoted}.")
