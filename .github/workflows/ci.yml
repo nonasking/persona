@@ -16,8 +16,8 @@ jobs:
       # 테스트 전용 값. 모든 Ollama 호출은 테스트에서 mock 처리된다.
       DJANGO_SECRET_KEY: ci-test-secret-key
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install
